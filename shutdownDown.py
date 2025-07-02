@@ -3,16 +3,16 @@ import time
 import os
 import win32gui
 import win32con
-import win32api
 import logging
-from datetime import datetime
 
 # 配置日志记录
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # 文件日志处理器
-file_handler = logging.FileHandler('shutdown_log.txt', encoding='utf-8')
+import os
+log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shutdown_log.txt')
+file_handler = logging.FileHandler(log_path, encoding='utf-8')
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
 # 控制台日志处理器
@@ -80,26 +80,136 @@ def check_unsaved_documents():
 
 def confirm_shutdown():
     """用户确认关机，3分钟无操作自动确认"""
-    # 使用win32api.MessageBoxTimeout实现超时功能
     try:
-        # 尝试设置前台窗口
+        import tkinter as tk
+        from tkinter import messagebox
+        
+        root = tk.Tk()
+        root.withdraw()  # 隐藏主窗口
+        
+        # 创建变量存储用户选择
+        user_choice = tk.BooleanVar(value=False)
+        
+        def on_timeout():
+            """3分钟超时自动确认"""
+            user_choice.set(True)
+            root.quit()
+        
+        def on_yes():
+            """用户点击是"""
+            user_choice.set(True)
+            root.quit()
+        
+        def on_no():
+            """用户点击否"""
+            user_choice.set(False)
+            try:
+                root.quit()
+                root.destroy()
+            except:
+                pass
+        
+        # 设置3分钟超时定时器
+        root.after(180000, on_timeout)
+        
+        # 创建自定义弹窗
+        top = tk.Toplevel(root)
+        top.title("关机确认")
+        top.attributes("-topmost", True)
+        
+        # 设置窗口大小和居中
+        window_width = 400
+        window_height = 200
+        screen_width = top.winfo_screenwidth()
+        screen_height = top.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        top.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        
+        # 设置窗口样式
+        top.configure(bg="#f0f0f0")
+        top.resizable(False, False)
+        
+        # 添加消息
+        msg_frame = tk.Frame(top, bg="#f0f0f0")
+        msg_frame.pack(pady=20)
+        
+        # 使用更美观的字体
         try:
-            win32gui.SetForegroundWindow(win32gui.GetDesktopWindow())
+            custom_font = ("Microsoft YaHei", 12)
         except:
-            pass
-        response = win32api.MessageBoxTimeout(
-            0,
-            "系统检测到可以安全关机，是否现在关机？\n(3分钟内无操作将自动确认)",
-            "关机确认",
-            win32con.MB_YESNO | win32con.MB_ICONQUESTION | win32con.MB_TOPMOST | win32con.MB_DEFBUTTON1 | win32con.MB_SETFOREGROUND,
-            0,  # 默认按钮
-            180000  # 3分钟超时(毫秒)
-        )
-        # 超时返回32000，视为确认
-        return response in [win32con.IDYES, 32000]
-    except AttributeError:
+            custom_font = ("Arial", 12)
+            
+        msg = tk.Label(msg_frame, 
+                      text="系统检测到可以安全关机，是否现在关机？\n(3分钟内无操作将自动确认)",
+                      font=custom_font,
+                      bg="#f0f0f0")
+        msg.pack()
+        
+        # 倒计时标签
+        countdown_var = tk.StringVar(value="剩余时间: 180秒")
+        countdown_label = tk.Label(msg_frame, 
+                                 textvariable=countdown_var,
+                                 font=custom_font,
+                                 fg="#ff0000",
+                                 bg="#f0f0f0")
+        countdown_label.pack(pady=10)
+        
+        # 更新倒计时
+        def update_countdown(remaining=180):
+            if remaining > 0:
+                countdown_var.set(f"剩余时间: {remaining}秒")
+                top.after(1000, update_countdown, remaining-1)
+        
+        update_countdown()
+        
+        # 按钮框架
+        btn_frame = tk.Frame(top, bg="#f0f0f0")
+        btn_frame.pack(pady=10)
+        
+        # 美化按钮
+        btn_style = {
+            "font": custom_font,
+            "width": 8,
+            "height": 1,
+            "bd": 0,
+            "activebackground": "#e0e0e0"
+        }
+        
+        yes_btn = tk.Button(btn_frame, 
+                           text="是", 
+                           command=on_yes,
+                           bg="#4CAF50",
+                           fg="white",
+                           **btn_style)
+        yes_btn.pack(side=tk.LEFT, padx=20)
+        
+        no_btn = tk.Button(btn_frame, 
+                          text="否", 
+                          command=on_no,
+                          bg="#f44336",
+                          fg="white",
+                          **btn_style)
+        no_btn.pack(side=tk.LEFT, padx=20)
+        
+        try:
+            # 运行主循环
+            root.mainloop()
+            
+            if user_choice.get():
+                logging.info("用户确认或超时自动确认关机")
+            else:
+                logging.info("用户取消了关机操作")
+                
+            return user_choice.get()
+        finally:
+            try:
+                root.destroy()
+            except:
+                pass
+        
+    except ImportError:
         # 回退到普通MessageBox
-        # 尝试设置前台窗口
         try:
             win32gui.SetForegroundWindow(win32gui.GetDesktopWindow())
         except:
